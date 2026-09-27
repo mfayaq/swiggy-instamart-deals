@@ -1118,7 +1118,8 @@
           "category": "Pet Supplies",
           "name": "Cat Food",
           "id": "682462130c0f930001b218ac",
-          "taxonomyType": "All Listing"
+          "taxonomyType": "All Listing",
+          "minDiscount": 40
         }
       ]
     }
