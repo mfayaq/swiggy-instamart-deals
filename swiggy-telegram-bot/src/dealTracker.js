@@ -159,6 +159,7 @@ function findAlertWorthyDeals(items, minDiscount = 70, campaignKey = 'default', 
       threshold = minDiscount;
     }
 
+    if (Number.isFinite(item.minDiscount)) threshold = item.minDiscount;
     if (item.discount < threshold) continue;
 
     const itemKey = getCanonicalItemKey(item);
