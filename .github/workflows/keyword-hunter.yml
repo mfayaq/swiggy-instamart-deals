@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        worker: [essentials, treats, lifestyle, beverages, personal]
+        worker: [essentials, treats, lifestyle, beverages, personal, noice]
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
