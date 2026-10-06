@@ -12,9 +12,9 @@ const token = process.env.TELEGRAM_BOT_TOKEN;
 const chatId = process.env.TELEGRAM_CHAT_ID;
 const minDiscount = parseInt(process.env.MIN_DISCOUNT_PERCENT, 10) || config.minDiscount || 70;
 
-const stores = resolveStores(config);
+const allStores = resolveStores(config);
 
-if (stores.length === 0) {
+if (allStores.length === 0) {
   console.error('❌ FATAL: SWIGGY_STORE_ID is missing or empty!');
   console.error('   Please configure SWIGGY_STORE_ID in your GitHub Repository Secrets:');
   console.error('   👉 Settings → Secrets and variables → Actions → New repository secret');
@@ -29,11 +29,14 @@ if (stores.length === 0) {
 const args = process.argv.slice(2);
 let mode = 'auto';
 let skipSync = false;
+let storeIndex = process.env.STORE_INDEX !== undefined && process.env.STORE_INDEX !== '' ? parseInt(process.env.STORE_INDEX, 10) : null;
 
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
   if (arg === '--skip-sync') {
     skipSync = true;
+  } else if (arg === '--store') {
+    storeIndex = parseInt(args[++i], 10);
   } else if (!arg.startsWith('--')) {
     mode = arg.toLowerCase();
   }
@@ -92,6 +95,14 @@ async function syncToHourMark(skip = false, targetBufferSecs = 30) {
     console.log(`[Sync] Running immediately at ${String(istNow.getUTCHours()).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')} IST.`);
   }
 }
+
+// One job per store: --store N (or env STORE_INDEX) picks the Nth store from the
+// configured list. Without it every store runs one after another (local use).
+if (storeIndex !== null && (Number.isNaN(storeIndex) || storeIndex < 0 || storeIndex >= allStores.length)) {
+  console.error(`❌ FATAL: store index ${storeIndex} is out of range (${allStores.length} store(s) configured).`);
+  process.exit(1);
+}
+const stores = storeIndex === null ? allStores : [allStores[storeIndex]];
 
 async function runSubcategoryCampaign(campaignKey, campaignCfg, options = {}) {
   const { bot, chatId, storeConfig, threshold, timeString } = options;
