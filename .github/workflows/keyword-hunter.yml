@@ -58,9 +58,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: swiggy-telegram-bot/data
-          key: deal-cache-${{ matrix.store == 0 && '' || format('s{0}-', matrix.store) }}${{ matrix.worker }}-${{ github.run_id }}
+          key: ${{ matrix.store == 0 && 'deal-cache-' || format('deal-cache-s{0}-', matrix.store) }}${{ matrix.worker }}-${{ github.run_id }}
           restore-keys: |
-            deal-cache-${{ matrix.store == 0 && '' || format('s{0}-', matrix.store) }}${{ matrix.worker }}-
+            ${{ matrix.store == 0 && 'deal-cache-' || format('deal-cache-s{0}-', matrix.store) }}${{ matrix.worker }}-
 
       - name: Run ${{ matrix.worker }} Deal Hunter
         working-directory: swiggy-telegram-bot
@@ -96,4 +96,4 @@ jobs:
         if: always()
         with:
           path: swiggy-telegram-bot/data
-          key: deal-cache-${{ matrix.store == 0 && '' || format('s{0}-', matrix.store) }}${{ matrix.worker }}-${{ github.run_id }}
+          key: ${{ matrix.store == 0 && 'deal-cache-' || format('deal-cache-s{0}-', matrix.store) }}${{ matrix.worker }}-${{ github.run_id }}
