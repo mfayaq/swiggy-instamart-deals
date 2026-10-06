@@ -4,6 +4,7 @@ const config = require('../config.json');
 const { fetchEssentialAisleDeals, fetchNoiceDeals } = require('./swiggyApi');
 const { findAlertWorthyDeals } = require('./dealTracker');
 const { sendBatchAlerts } = require('./notifier');
+const { resolveStores } = require('./stores');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -11,19 +12,16 @@ const token = process.env.TELEGRAM_BOT_TOKEN;
 const chatId = process.env.TELEGRAM_CHAT_ID;
 const minDiscount = parseInt(process.env.MIN_DISCOUNT_PERCENT, 10) || config.minDiscount || 70;
 
-const storeConfig = {
-  sid: process.env.SWIGGY_STORE_ID || config.store?.sid || '',
-  pid: process.env.SWIGGY_PRIMARY_STORE_ID || config.store?.pid || '',
-  secid: process.env.SWIGGY_SECONDARY_STORE_ID || config.store?.secid || ''
-};
+const stores = resolveStores(config);
 
-if (!storeConfig.sid) {
+if (stores.length === 0) {
   console.error('❌ FATAL: SWIGGY_STORE_ID is missing or empty!');
   console.error('   Please configure SWIGGY_STORE_ID in your GitHub Repository Secrets:');
   console.error('   👉 Settings → Secrets and variables → Actions → New repository secret');
   console.error('   • SWIGGY_STORE_ID = <your_dark_store_id>');
   console.error('   • SWIGGY_PRIMARY_STORE_ID = <your_dark_store_id>');
   console.error('   • SWIGGY_SECONDARY_STORE_ID = <secondary_id_or_same>');
+  console.error('   • SWIGGY_STORE_IDS = <optional, extra stores: id1,id2:secondaryId>');
   process.exit(1);
 }
 
@@ -99,7 +97,9 @@ async function runSubcategoryCampaign(campaignKey, campaignCfg, options = {}) {
   const { bot, chatId, storeConfig, threshold, timeString } = options;
   const name = campaignCfg.name || campaignKey;
   const tag = campaignCfg.tag || '';
-  const headerName = tag ? `${tag} ${name}` : name;
+  const baseHeader = tag ? `${tag} ${name}` : name;
+  const headerName = storeConfig.label ? `${baseHeader} • 📍 ${storeConfig.label}` : baseHeader;
+  const cacheKey = `${campaignKey}${storeConfig.cacheSuffix || ''}`;
   const subcategories = campaignCfg.subcategories || [];
 
   console.log(`\n--- Running ${name} (${subcategories.length} Subcategories) ---`);
@@ -139,7 +139,7 @@ async function runSubcategoryCampaign(campaignKey, campaignCfg, options = {}) {
     const refreshCycle = campaignCfg.refreshCycle || 'daily';
     const weeklyResetDay = campaignCfg.weeklyResetDay !== undefined ? campaignCfg.weeklyResetDay : 1;
     const weeklyCategories = campaignCfg.weeklyCategories || config.weeklyCategories || ['Electronics and Appliances'];
-    const alerts = findAlertWorthyDeals(items, threshold, campaignKey, {
+    const alerts = findAlertWorthyDeals(items, threshold, cacheKey, {
       refreshCycle,
       weeklyResetDay,
       weeklyCategories
@@ -159,7 +159,7 @@ async function runSubcategoryCampaign(campaignKey, campaignCfg, options = {}) {
 }
 
 async function main() {
-  console.log(`[CronRunner] Mode: ${mode.toUpperCase()} | Store: ${storeConfig.sid}`);
+  console.log(`[CronRunner] Mode: ${mode.toUpperCase()} | Stores: ${stores.map((x) => x.sid).join(', ')}`);
 
   // Synchronize to :00:00 IST if runner booted early in pre-hour window
   await syncToHourMark(skipSync);
@@ -241,6 +241,9 @@ async function main() {
   }
 
   const campaigns = config.campaigns || {};
+
+  for (const storeConfig of stores) {
+  console.log(`\n[CronRunner] ===== Store ${storeConfig.sid}${storeConfig.label ? ` (${storeConfig.label})` : ''} =====`);
 
   // 1. Worker 1: Daily Fresh Produce & Meats
   if (runFresh) {
@@ -342,17 +345,18 @@ async function main() {
     try {
       const items = await fetchNoiceDeals(storeConfig);
       console.log(`[NOICE] Scraped ${items.length} items.`);
-      const alerts = findAlertWorthyDeals(items, noiceThreshold, 'noice', {
+      const alerts = findAlertWorthyDeals(items, noiceThreshold, `noice${storeConfig.cacheSuffix || ''}`, {
         refreshCycle: cfg.refreshCycle || 'weekly',
         weeklyResetDay: cfg.weeklyResetDay !== undefined ? cfg.weeklyResetDay : 1
       });
       console.log(`[NOICE] Found ${alerts.length} new/improved deals >= ${noiceThreshold}%.`);
       if (bot && chatId && alerts.length > 0) {
-        await sendBatchAlerts(bot, chatId, alerts, { timeString, workerInfo: '✨ The NOICE Store' });
+        await sendBatchAlerts(bot, chatId, alerts, { timeString, workerInfo: `✨ The NOICE Store${storeConfig.label ? ` • 📍 ${storeConfig.label}` : ''}` });
       }
     } catch (e) {
       console.error('[NOICE] Error:', e.message);
     }
+  }
   }
 
   console.log('\n[CronRunner] Execution finished successfully.');
