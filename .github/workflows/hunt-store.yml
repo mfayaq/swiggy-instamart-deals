@@ -1,0 +1,80 @@
+name: Hunt one store
+
+on:
+  workflow_call:
+    inputs:
+      store:
+        type: number
+        required: true
+      skip_sync:
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  hunt:
+    name: Worker (${{ matrix.worker }}, store ${{ inputs.store }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        worker: [fresh, grocery, treats, munchies, beverages, personal, lifestyle, noice]
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: 'swiggy-telegram-bot/package-lock.json'
+
+      - name: Install Dependencies
+        working-directory: swiggy-telegram-bot
+        run: npm ci || npm install
+
+      - name: Restore Deal Cache
+        uses: actions/cache/restore@v4
+        with:
+          path: swiggy-telegram-bot/data
+          key: ${{ inputs.store == 0 && 'deal-cache-' || format('deal-cache-s{0}-', inputs.store) }}${{ matrix.worker }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ inputs.store == 0 && 'deal-cache-' || format('deal-cache-s{0}-', inputs.store) }}${{ matrix.worker }}-
+
+      - name: Run ${{ matrix.worker }} Deal Hunter
+        working-directory: swiggy-telegram-bot
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SWIGGY_STORE_ID: ${{ secrets.SWIGGY_STORE_ID }}
+          SWIGGY_PRIMARY_STORE_ID: ${{ secrets.SWIGGY_PRIMARY_STORE_ID }}
+          SWIGGY_SECONDARY_STORE_ID: ${{ secrets.SWIGGY_SECONDARY_STORE_ID }}
+          SWIGGY_STORE_IDS: ${{ secrets.SWIGGY_STORE_IDS }}
+          SWIGGY_COOKIE: ${{ secrets.SWIGGY_COOKIE }}
+          FRESH_MIN_DISCOUNT: ${{ secrets.FRESH_MIN_DISCOUNT || secrets.ESSENTIALS_MIN_DISCOUNT }}
+          GROCERY_MIN_DISCOUNT: ${{ secrets.GROCERY_MIN_DISCOUNT || secrets.ESSENTIALS_MIN_DISCOUNT }}
+          ESSENTIALS_MIN_DISCOUNT: ${{ secrets.ESSENTIALS_MIN_DISCOUNT }}
+          TREATS_MIN_DISCOUNT: ${{ secrets.TREATS_MIN_DISCOUNT }}
+          MUNCHIES_MIN_DISCOUNT: ${{ secrets.MUNCHIES_MIN_DISCOUNT || secrets.TREATS_MIN_DISCOUNT }}
+          LIFESTYLE_MIN_DISCOUNT: ${{ secrets.LIFESTYLE_MIN_DISCOUNT }}
+          BEVERAGES_MIN_DISCOUNT: ${{ secrets.BEVERAGES_MIN_DISCOUNT }}
+          PERSONAL_MIN_DISCOUNT: ${{ secrets.PERSONAL_MIN_DISCOUNT }}
+          USE_BROWSER: 'true'
+          SKIP_SYNC: ${{ inputs.skip_sync }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: |
+          EXTRA_FLAGS=""
+          if [ "$SKIP_SYNC" = "true" ]; then
+            EXTRA_FLAGS="--skip-sync"
+          fi
+          echo "Executing Deal Hunter Worker: ${{ matrix.worker }}..."
+          node src/cron-runner.js ${{ matrix.worker }} --store ${{ inputs.store }} $EXTRA_FLAGS
+
+      - name: Save Deal Cache
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: swiggy-telegram-bot/data
+          key: ${{ inputs.store == 0 && 'deal-cache-' || format('deal-cache-s{0}-', inputs.store) }}${{ matrix.worker }}-${{ github.run_id }}

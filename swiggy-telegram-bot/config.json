@@ -4,6 +4,7 @@
     "pid": "",
     "secid": ""
   },
+  "storeNames": ["Home", "Gold Gym"],
   "minDiscount": 70,
   "weeklyCategories": [
     "Electronics and Appliances"

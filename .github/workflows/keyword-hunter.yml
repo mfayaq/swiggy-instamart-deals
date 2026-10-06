@@ -9,70 +9,66 @@ on:
         required: false
         default: false
 
+# One run at a time. A run started while another is going waits in the queue
+# (GitHub keeps one waiting run; a newer waiting run replaces the older one).
+concurrency:
+  group: swiggy-hunter
+  cancel-in-progress: false
+
 jobs:
-  hunt:
-    name: Worker (${{ matrix.worker }})
+  plan:
+    name: Plan stores
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      max-parallel: 4
-      matrix:
-        worker: [fresh, grocery, treats, munchies, beverages, personal, lifestyle, noice]
+    timeout-minutes: 5
+    outputs:
+      count: ${{ steps.stores.outputs.count }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
-          cache-dependency-path: 'swiggy-telegram-bot/package-lock.json'
-
-      - name: Install Dependencies
-        working-directory: swiggy-telegram-bot
-        run: npm ci || npm install
-
-      - name: Restore Deal Cache
-        uses: actions/cache/restore@v4
-        with:
-          path: swiggy-telegram-bot/data
-          key: deal-cache-${{ matrix.worker }}-${{ github.run_id }}
-          restore-keys: |
-            deal-cache-${{ matrix.worker }}-
-
-      - name: Run ${{ matrix.worker }} Deal Hunter
+      - name: List store indexes
+        id: stores
         working-directory: swiggy-telegram-bot
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           SWIGGY_STORE_ID: ${{ secrets.SWIGGY_STORE_ID }}
-          SWIGGY_PRIMARY_STORE_ID: ${{ secrets.SWIGGY_PRIMARY_STORE_ID }}
-          SWIGGY_SECONDARY_STORE_ID: ${{ secrets.SWIGGY_SECONDARY_STORE_ID }}
-          SWIGGY_COOKIE: ${{ secrets.SWIGGY_COOKIE }}
-          FRESH_MIN_DISCOUNT: ${{ secrets.FRESH_MIN_DISCOUNT || secrets.ESSENTIALS_MIN_DISCOUNT }}
-          GROCERY_MIN_DISCOUNT: ${{ secrets.GROCERY_MIN_DISCOUNT || secrets.ESSENTIALS_MIN_DISCOUNT }}
-          ESSENTIALS_MIN_DISCOUNT: ${{ secrets.ESSENTIALS_MIN_DISCOUNT }}
-          TREATS_MIN_DISCOUNT: ${{ secrets.TREATS_MIN_DISCOUNT }}
-          MUNCHIES_MIN_DISCOUNT: ${{ secrets.MUNCHIES_MIN_DISCOUNT || secrets.TREATS_MIN_DISCOUNT }}
-          LIFESTYLE_MIN_DISCOUNT: ${{ secrets.LIFESTYLE_MIN_DISCOUNT }}
-          BEVERAGES_MIN_DISCOUNT: ${{ secrets.BEVERAGES_MIN_DISCOUNT }}
-          PERSONAL_MIN_DISCOUNT: ${{ secrets.PERSONAL_MIN_DISCOUNT }}
-          USE_BROWSER: 'true'
-          SKIP_SYNC: ${{ inputs.skip_sync }}
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          SWIGGY_STORE_IDS: ${{ secrets.SWIGGY_STORE_IDS }}
         run: |
-          EXTRA_FLAGS=""
-          if [ "$SKIP_SYNC" = "true" ]; then
-            EXTRA_FLAGS="--skip-sync"
+          STORES=$(node src/store-matrix.js)
+          COUNT=$(node -e 'console.log(JSON.parse(process.argv[1]).length)' "$STORES")
+          if [ "$COUNT" -gt 3 ]; then
+            echo "::warning::$COUNT stores configured, only the first 3 are run"
           fi
-          echo "Executing Deal Hunter Worker: ${{ matrix.worker }}..."
-          node src/cron-runner.js ${{ matrix.worker }} $EXTRA_FLAGS
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
 
-      - name: Save Deal Cache
-        uses: actions/cache/save@v4
-        if: always()
-        with:
-          path: swiggy-telegram-bot/data
-          key: deal-cache-${{ matrix.worker }}-${{ github.run_id }}
+  # Stores run one after another so Telegram alerts arrive Home first, then the
+  # next store. Each store runs its 8 workers in parallel (see hunt-store.yml).
+  # always() keeps a later store running when an earlier one failed.
+  store0:
+    name: Store 0
+    needs: plan
+    if: ${{ needs.plan.result == 'success' && fromJSON(needs.plan.outputs.count) > 0 }}
+    uses: ./.github/workflows/hunt-store.yml
+    with:
+      store: 0
+      skip_sync: ${{ inputs.skip_sync }}
+    secrets: inherit
+
+  store1:
+    name: Store 1
+    needs: [plan, store0]
+    if: ${{ always() && needs.plan.result == 'success' && fromJSON(needs.plan.outputs.count) > 1 }}
+    uses: ./.github/workflows/hunt-store.yml
+    with:
+      store: 1
+      skip_sync: ${{ inputs.skip_sync }}
+    secrets: inherit
+
+  store2:
+    name: Store 2
+    needs: [plan, store1]
+    if: ${{ always() && needs.plan.result == 'success' && fromJSON(needs.plan.outputs.count) > 2 }}
+    uses: ./.github/workflows/hunt-store.yml
+    with:
+      store: 2
+      skip_sync: ${{ inputs.skip_sync }}
+    secrets: inherit
