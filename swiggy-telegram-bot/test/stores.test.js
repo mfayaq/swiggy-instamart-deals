@@ -33,10 +33,10 @@ assert.strictEqual(s[0].cacheSuffix, '_store4');
 // nothing configured
 assert.deepStrictEqual(resolveStores({}, {}), []);
 // storeNames labels by position, base store included, only with 2+ stores
-s = resolveStores({ storeNames: ['Home', 'MDA'] }, { SWIGGY_STORE_ID: '1', SWIGGY_STORE_IDS: '2' });
-assert.deepStrictEqual(s.map((x) => x.label), ['Home', 'MDA']);
+s = resolveStores({ storeNames: ['Home', 'Gold Gym'] }, { SWIGGY_STORE_ID: '1', SWIGGY_STORE_IDS: '2' });
+assert.deepStrictEqual(s.map((x) => x.label), ['Home', 'Gold Gym']);
 assert.deepStrictEqual(s.map((x) => x.cacheSuffix), ['', '_store2']);
-s = resolveStores({ storeNames: ['Home', 'MDA'] }, { SWIGGY_STORE_ID: '1' });
+s = resolveStores({ storeNames: ['Home', 'Gold Gym'] }, { SWIGGY_STORE_ID: '1' });
 assert.strictEqual(s[0].label, '');
 // storeNames wins over config stores name; missing names fall back
 s = resolveStores({ storeNames: ['Home'], stores: [{ id: '5', name: 'Office' }] }, { SWIGGY_STORE_ID: '1' });
