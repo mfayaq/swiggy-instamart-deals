@@ -5,6 +5,9 @@
  * SWIGGY_PRIMARY_STORE_ID, SWIGGY_SECONDARY_STORE_ID or config.store), so
  * existing setups keep working and keep their dedup caches.
  *
+ * Labels: config.json "storeNames": ["Home", "MDA"] names stores by position
+ * (first = base store). Labels only show in alerts when 2+ stores are configured.
+ *
  * Extra stores come from either:
  *   - env SWIGGY_STORE_IDS: comma separated, each entry "id" or "id:secondaryId"
  *     (example: "1400216,1401290:1231805")
@@ -57,8 +60,13 @@ function resolveStores(config = {}, env = process.env) {
   }
 
   // With several stores every store gets a label so alerts name the store.
+  // config.storeNames labels stores by position (0 = base store), which keeps the
+  // (secret) ids out of the repo: "storeNames": ["Home", "MDA"].
   if (stores.length > 1) {
-    for (const s of stores) s.label = s.label || `Store ${s.sid}`;
+    const names = Array.isArray(config.storeNames) ? config.storeNames : [];
+    stores.forEach((s, i) => {
+      s.label = names[i] || s.label || `Store ${s.sid}`;
+    });
   }
 
   return stores;
